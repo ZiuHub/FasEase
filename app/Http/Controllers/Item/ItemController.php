@@ -1,0 +1,104 @@
+<?php
+
+namespace App\Http\Controllers\Item;
+
+use App\Models\Item;
+use App\Models\Category;
+use App\Models\Organization;
+use Illuminate\Http\Request;
+use App\Http\Controllers\Controller;
+
+class ItemController extends Controller
+{
+    public function index(Request $request){
+        $datas = Item::where('organization_id', app('currentOrganization')->id)->latest()->paginate(50);
+        if ($request->has(key: 'search')) {
+            $datas = Item::where('organization_id', app('currentOrganization')->id)
+                ->where('name', 'like', '%' . $request->search . '%')
+                ->latest()
+                ->paginate(50);
+        }
+        return view('item.item-management', compact('datas'));
+    }
+
+    public function create(){
+        $categories = Category::all();
+        $organizations = Organization::all();
+        return view('item.item-add', compact('categories', 'organizations'));
+    }
+
+    public function store(Request $request){
+        $request->validate([
+            'category_id' => 'required',
+            'name' => 'required|string|max:255|',
+            'description' => 'nullable|string',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'is_active' => 'required|boolean',
+            'max_book_duration' => 'required|integer|min:1',
+        ]);
+
+        $slug = Item::generateSlug($request->name);
+        $input = $request->all();
+        $input['slug'] = $slug;
+        $input['is_active'] = $request->is_active;  
+        $input['organization_id'] = auth()->user()->organization_id;
+
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $profileImage = date('YmdHis') . '.' . $image->getClientOriginalExtension();
+            $destinationPath = 'images/categories/';
+            $image->move(public_path($destinationPath), $profileImage);
+            $input['image'] = $destinationPath . $profileImage;
+        } else {
+            // default image
+            $input['image'] = 'storage/no_image.png';
+        }
+
+        Item::create($input);
+        session()->flash('success', 'Item has been created.');
+        return redirect('item-management');
+    }
+
+    public function edit($slug){
+        $data = Item::where('slug', $slug)->first();
+        $categories = Category::all();
+        $organizations = Organization::all();
+        return view('item.item-edit', compact('data', 'categories', 'organizations'));
+    }
+
+    public function update(Request $request, $slug){
+        $request->validate([
+            'category_id' => 'required',
+            'name' => 'required|string|max:255|',
+            'description' => 'nullable|string|max:1000',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'is_active' => 'required|boolean',
+            'max_book_duration' => 'required|integer|min:1',
+        ]);
+
+        $slug_new = Item::generateSlug($request->name);
+        $input = $request->only(['name', 'organization_id', 'description', 'max_book_duration', 'category_id']);
+        $input['slug'] = $slug_new;
+        $input['is_active'] = $request->is_active;
+        $input['organization_id'] = auth()->user()->organization_id;
+
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $profileImage = date('YmdHis') . '.' . $image->getClientOriginalExtension();
+            $destinationPath = 'images/categories/';
+            $image->move(public_path($destinationPath), $profileImage);
+            $input['image'] = $destinationPath . $profileImage;
+        } 
+
+        Item::where('slug', $slug)->update($input);
+        session()->flash('success', 'Item has been updated.');
+        return redirect('item-management');
+    }
+
+    public function destroy($slug)
+    {
+        Item::where('slug', $slug)->delete();
+        session()->flash('success', 'Item has been deleted.');
+        return redirect('item-management');
+    }
+}
